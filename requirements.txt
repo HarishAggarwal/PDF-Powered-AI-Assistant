@@ -1,0 +1,16 @@
+pypdf
+pymupdf
+langchain
+langgraph
+langchain-core
+langchain-community
+langchain-groq
+langchain-huggingface
+faiss-cpu
+huggingface-hub
+typing-extensions
+python-dotenv
+gradio
+transformers
+accelerate
+sentence-transformers
