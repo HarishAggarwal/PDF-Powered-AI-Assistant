@@ -11,8 +11,7 @@ from langchain.chat_models import init_chat_model
 from langchain.vectorstores import FAISS
 from langgraph.graph import StateGraph, START
 from typing_extensions import TypedDict, List
-import tempfile
-import shutil
+import os
 import time
 
 # ✅ Load API key from .env
@@ -254,8 +253,8 @@ if init_embeddings():
 else:
     print("⚠️ Warning: Embeddings not initialized. Will try again when processing first PDF.")
 
+
 if __name__ == "__main__":
-    demo.launch(
-        server_port=7860,
-        debug=False  # optional
-    )
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
+    print(f"🌐 Gradio app running on port {port}")
