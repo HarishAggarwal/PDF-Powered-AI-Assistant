@@ -8,10 +8,11 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain.chat_models import init_chat_model
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS  # ✅ Fixed import
 from langgraph.graph import StateGraph, START
 from typing_extensions import TypedDict, List
-import os
+import tempfile
+import shutil
 import time
 
 # ✅ Load API key from .env
@@ -70,7 +71,7 @@ def init_embeddings():
             encode_kwargs={'normalize_embeddings': False}
         )
         print("✅ Embeddings model initialized successfully")
-        return True
+        return True  # ✅ Fixed return value
     except Exception as e:
         print(f"❌ Error initializing embeddings: {e}")
         return False
@@ -130,7 +131,6 @@ def process_pdf(pdf_file):
     start_time = time.time()
     
     try:
-
         vector_store = FAISS.from_documents(documents, embedding=embeddings)
         print("✅ FAISS vector store created successfully")
         print("🎉 PDF processing completed!")
@@ -141,7 +141,6 @@ def process_pdf(pdf_file):
     except Exception as e:
         print(f"❌ FAISS error: {e}")
         return "❌ Failed to create FAISS vector store."
-
 
 # ✅ Retriever + Generator functions
 def retrieve(state: State):
@@ -190,61 +189,71 @@ def ask_question(user_question):
         print(error_msg)
         return error_msg
 
-# ✅ Gradio Interface
-with gr.Blocks(title="PDF Q&A Assistant") as demo:
-    gr.Markdown("## 📘 PDF Q&A Assistant using LLaMA-3 + Chroma + Groq")
-    gr.Markdown("Upload a PDF document and ask questions about its content!")
-
-    with gr.Row():
-        with gr.Column():
-            pdf_input = gr.File(
-                label="📄 Upload your PDF", 
-                file_types=[".pdf"],
-                file_count="single"
-            )
-            upload_btn = gr.Button("📤 Process PDF", variant="primary")
-            status_output = gr.Textbox(
-                label="📊 Processing Status", 
-                interactive=False,
-                lines=3
-            )
-
-    with gr.Row():
-        with gr.Column():
-            question_input = gr.Textbox(
-                label="❓ Ask a Question about the Document",
-                placeholder="Enter your question here...",
-                lines=2
-            )
-            ask_btn = gr.Button("🧠 Ask Question", variant="secondary")
-            answer_output = gr.Textbox(
-                label="💡 Answer", 
-                lines=10,
-                interactive=False
-            )
-
-    # Event handlers
-    upload_btn.click(
-        fn=process_pdf, 
-        inputs=pdf_input, 
-        outputs=status_output,
-        show_progress=True
+# ✅ Simplified Gradio Interface to avoid schema issues
+def create_interface():
+    def combined_process_and_ask(pdf_file, question):
+        """Combined function to process PDF and ask question"""
+        if pdf_file is None:
+            return "❌ No PDF file uploaded.", ""
+        
+        # Process PDF
+        status = process_pdf(pdf_file)
+        
+        # If processing successful and question provided, ask question
+        if "✅" in status and question and question.strip():
+            answer = ask_question(question)
+            return status, answer
+        
+        return status, ""
+    
+    # Create interface with simpler structure
+    interface = gr.Interface(
+        fn=combined_process_and_ask,
+        inputs=[
+            gr.File(label="📄 Upload PDF", file_types=[".pdf"]),
+            gr.Textbox(label="❓ Ask Question (optional)", placeholder="Enter your question here...")
+        ],
+        outputs=[
+            gr.Textbox(label="📊 Processing Status", lines=3),
+            gr.Textbox(label="💡 Answer", lines=10)
+        ],
+        title="📘 PDF Q&A Assistant",
+        description="Upload a PDF document and optionally ask a question about its content!",
+        allow_flagging="never"
     )
     
-    ask_btn.click(
-        fn=ask_question, 
-        inputs=question_input, 
-        outputs=answer_output,
-        show_progress=True
-    )
+    return interface
+
+# Alternative: Minimal Blocks interface
+def create_simple_blocks():
+    with gr.Blocks(title="PDF Q&A Assistant") as demo:
+        gr.Markdown("## 📘 PDF Q&A Assistant")
+        
+        pdf_input = gr.File(label="📄 Upload PDF", file_types=[".pdf"])
+        question_input = gr.Textbox(label="❓ Question", placeholder="Ask about the PDF...")
+        
+        process_btn = gr.Button("Process & Ask")
+        
+        status_output = gr.Textbox(label="Status", lines=2)
+        answer_output = gr.Textbox(label="Answer", lines=8)
+        
+        def process_and_ask(pdf_file, question):
+            if pdf_file is None:
+                return "❌ No PDF uploaded", ""
+            
+            status = process_pdf(pdf_file)
+            if "✅" in status and question.strip():
+                answer = ask_question(question)
+                return status, answer
+            return status, ""
+        
+        process_btn.click(
+            fn=process_and_ask,
+            inputs=[pdf_input, question_input],
+            outputs=[status_output, answer_output]
+        )
     
-    # Allow Enter key to submit question
-    question_input.submit(
-        fn=ask_question, 
-        inputs=question_input, 
-        outputs=answer_output,
-        show_progress=True
-    )
+    return demo
 
 # ✅ Initialize embeddings at startup
 print("🚀 Starting application...")
@@ -253,8 +262,25 @@ if init_embeddings():
 else:
     print("⚠️ Warning: Embeddings not initialized. Will try again when processing first PDF.")
 
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port)
-    print(f"🌐 Gradio app running on port {port}")
+    # Try the simpler interface first
+    try:
+        demo = create_simple_blocks()
+        demo.launch(
+            server_name="127.0.0.1",  # ✅ Changed for Docker compatibility
+            server_port=7860,
+            share=False,  # ✅ Disabled share for Docker
+            debug=False   # ✅ Disabled debug to reduce complexity
+        )
+    except Exception as e:
+        print(f"❌ Error launching Gradio interface: {e}")
+        # Fallback to even simpler interface
+        try:
+            demo = create_interface()
+            demo.launch(
+                server_name="127.0.0.1",
+                server_port=7860,
+                share=False
+            )
+        except Exception as e2:
+            print(f"❌ Fallback interface also failed: {e2}")
